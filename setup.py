@@ -28,7 +28,7 @@ REQUIRED = [
     "matplotlib",
     "numpy",
     "pillow",
-    "pyknos==0.12",
+    "pyknos@git+https://github.com/mackelab/pyknos@gpu-support",
     "pyro-ppl==1.3.1",  # TODO: Remove once #286 is addressed
     "scipy",
     "tensorboard",
