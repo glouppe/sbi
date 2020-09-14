@@ -16,7 +16,6 @@ from sbi.simulators.linear_gaussian import (
     samples_true_posterior_linear_gaussian_uniform_prior,
     true_posterior_linear_gaussian_mvn_prior,
 )
-from sbi.utils.torchutils import configure_default_device
 from tests.test_utils import (
     check_c2st,
     get_dkl_gaussian_prior,
@@ -60,8 +59,6 @@ def test_c2st_sre_on_linearGaussian_different_dims(set_seed):
         set_seed: fixture for manual seeding
     """
 
-    device = "cpu"
-    configure_default_device(device)
     theta_dim = 3
     x_dim = 2
     discard_dims = theta_dim - x_dim
@@ -97,7 +94,6 @@ def test_c2st_sre_on_linearGaussian_different_dims(set_seed):
         classifier="resnet",
         simulation_batch_size=50,
         show_progress_bars=False,
-        device=device,
     )
 
     posterior = infer(num_simulations=5000)
@@ -116,8 +112,6 @@ def test_c2st_sre_external_data_on_linearGaussian(set_seed):
     """
     num_dim = 2
 
-    device = "cpu"
-    configure_default_device(device)
     x_o = zeros(1, num_dim)
     num_samples = 1000
 
@@ -140,7 +134,6 @@ def test_c2st_sre_external_data_on_linearGaussian(set_seed):
         *prepare_for_sbi(simulator, prior),
         simulation_batch_size=1000,
         show_progress_bars=False,
-        device=device,
     )
 
     external_theta = prior.sample((1000,))

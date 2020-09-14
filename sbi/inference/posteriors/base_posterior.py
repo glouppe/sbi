@@ -48,6 +48,7 @@ class NeuralPosterior(ABC):
         x_shape: torch.Size,
         mcmc_method: str = "slice_np",
         mcmc_parameters: Optional[Dict[str, Any]] = None,
+        device: str = "cpu",
     ):
         """
         Args:
@@ -67,6 +68,7 @@ class NeuralPosterior(ABC):
                 will draw init locations from prior, whereas `sir` will use Sequential-
                 Importance-Resampling using `init_strategy_num_candidates` to find init
                 locations.
+            device: Training device, e.g., cpu or cuda:0.
         """
         if method_family in ("snpe", "snle", "snre_a", "snre_b"):
             self._method_family = method_family
@@ -84,6 +86,7 @@ class NeuralPosterior(ABC):
         self._prior = prior
         self._x = None
         self._x_shape = x_shape
+        self._device = device
 
     @property
     def default_x(self) -> Optional[Tensor]:
@@ -321,6 +324,7 @@ class NeuralPosterior(ABC):
                     initial_params=initial_params,
                     thin=thin,
                     warmup_steps=warmup_steps,
+                    show_progress_bars=show_progress_bars,
                 )
             elif mcmc_method in ("hmc", "nuts", "slice"):
                 samples = self._pyro_mcmc(
@@ -345,6 +349,7 @@ class NeuralPosterior(ABC):
         initial_params: Tensor,
         thin: int,
         warmup_steps: int,
+        show_progress_bars: bool,
     ) -> Tensor:
         """
         Custom implementation of slice sampling using Numpy.
@@ -365,9 +370,11 @@ class NeuralPosterior(ABC):
         all_samples = []
         for c in range(num_chains):
             posterior_sampler = SliceSampler(
-                utils.tensor2numpy(initial_params[c, :]).reshape(-1),
+                # Pass initial params.
+                x=utils.tensor2numpy(initial_params[c, :]).reshape(-1),
                 lp_f=potential_function,
                 thin=thin,
+                show_progressbar=show_progress_bars,
             )
             if warmup_steps > 0:
                 posterior_sampler.gen(int(warmup_steps))

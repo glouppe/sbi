@@ -24,7 +24,7 @@ from sbi.utils import (
 )
 from sbi.utils.plot import pairplot
 from sbi.utils.sbiutils import get_data_since_round, mask_sims_from_prior
-from sbi.utils.torchutils import configure_default_device
+from sbi.utils.torchutils import process_device
 
 
 def infer(
@@ -106,7 +106,7 @@ class NeuralInference(ABC):
                 maps to data x at once. If None, we simulate all parameter sets at the
                 same time. If >= 1, the simulator has to process data of shape
                 (simulation_batch_size, parameter_dimension).
-            device: torch device on which to compute, e.g. gpu or cpu.
+            device: torch device on which to train the neural net, e.g. gpu or cpu.
             logging_level: Minimum severity of messages to log. One of the strings
                "INFO", "WARNING", "DEBUG", "ERROR" and "CRITICAL".
             summary_writer: A `SummaryWriter` to control, among others, log
@@ -117,13 +117,7 @@ class NeuralInference(ABC):
                 each round.
         """
 
-        # We set the device globally by setting the default tensor type for all tensors.
-        assert device in (
-            "gpu",
-            "cpu",
-        ), "Currently, only 'gpu' or 'cpu' are supported as devices."
-
-        self._device = configure_default_device(device)
+        self._device = process_device(device)
 
         self._simulator, self._prior = simulator, prior
 

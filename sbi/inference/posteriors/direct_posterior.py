@@ -1,18 +1,12 @@
 # This file is part of sbi, a toolkit for simulation-based inference. sbi is licensed
 # under the Affero General Public License v3, see <https://www.gnu.org/licenses/>.
 
-from copy import deepcopy
 from typing import (
     Any,
     Callable,
     Dict,
     List,
     Optional,
-    Sequence,
-    Tuple,
-    TypeVar,
-    Union,
-    cast,
 )
 
 import numpy as np
@@ -20,17 +14,10 @@ import torch
 from torch import Tensor, log, nn
 
 from sbi import utils as utils
-from sbi.inference.posteriors.base_posterior import (
-    ConditionalPotentialFunctionProvider,
-    NeuralPosterior,
-)
+from sbi.inference.posteriors.base_posterior import NeuralPosterior
 from sbi.types import ScalarFloat, Shape
 from sbi.utils import del_entries
-from sbi.utils.torchutils import (
-    atleast_2d_float32_tensor,
-    batched_first_of_batch,
-    ensure_theta_batched,
-)
+from sbi.utils.torchutils import batched_first_of_batch
 
 
 class DirectPosterior(NeuralPosterior):
@@ -58,6 +45,7 @@ class DirectPosterior(NeuralPosterior):
         sample_with_mcmc: bool = True,
         mcmc_method: str = "slice_np",
         mcmc_parameters: Optional[Dict[str, Any]] = None,
+        device: str = "cpu",
     ):
         """
         Args:
@@ -80,6 +68,7 @@ class DirectPosterior(NeuralPosterior):
                 will draw init locations from prior, whereas `sir` will use Sequential-
                 Importance-Resampling using `init_strategy_num_candidates` to find init
                 locations.
+            device: Training device, e.g., cpu or cuda:0
         """
 
         kwargs = del_entries(
@@ -159,14 +148,16 @@ class DirectPosterior(NeuralPosterior):
         theta, x = self._prepare_theta_and_x_for_log_prob_(theta, x)
 
         with torch.set_grad_enabled(track_gradients):
-            unnorm_log_prob = self.net.log_prob(theta, x)
+            unnorm_log_prob = self.net.log_prob(
+                theta.to(self._device), x.to(self._device)
+            )
 
             # Force probability to be zero outside prior support.
             is_prior_finite = torch.isfinite(self._prior.log_prob(theta))
 
             masked_log_prob = torch.where(
                 is_prior_finite,
-                unnorm_log_prob,
+                unnorm_log_prob.to("cpu"),
                 torch.tensor(float("-inf"), dtype=torch.float32),
             )
 
@@ -212,7 +203,7 @@ class DirectPosterior(NeuralPosterior):
             return utils.sample_posterior_within_prior(
                 self.net,
                 self._prior,
-                x,
+                x.to(self._device),
                 num_rejection_samples,
                 show_progress_bars,
                 sample_for_correction_factor=True,
@@ -240,6 +231,7 @@ class DirectPosterior(NeuralPosterior):
         sample_with_mcmc: Optional[bool] = None,
         mcmc_method: Optional[str] = None,
         mcmc_parameters: Optional[Dict[str, Any]] = None,
+        return_device: str = "cpu",
     ) -> Tensor:
         r"""
         Return samples from posterior distribution $p(\theta|x)$.
@@ -267,6 +259,8 @@ class DirectPosterior(NeuralPosterior):
                 will draw init locations from prior, whereas `sir` will use Sequential-
                 Importance-Resampling using `init_strategy_num_candidates` to find init
                 locations.
+            return_device: device of the returned samples. Default to CPU because
+                usually only the evaluation and sampling happens on the GPU.
 
         Returns:
             Samples from posterior.
@@ -275,10 +269,15 @@ class DirectPosterior(NeuralPosterior):
         x, num_samples, mcmc_method, mcmc_parameters = self._prepare_for_sample(
             x, sample_shape, mcmc_method, mcmc_parameters
         )
+        # Move x to the same device as the nn.
+        x = x.to(self._device)
 
         sample_with_mcmc = (
             sample_with_mcmc if sample_with_mcmc is not None else self.sample_with_mcmc
         )
+
+        # Move x to current device.
+        x = x.to(self._device)
 
         self.net.eval()
 
@@ -422,7 +421,8 @@ class PotentialFunctionProvider:
         is_within_prior = torch.isfinite(self.prior.log_prob(theta))
         if is_within_prior:
             target_log_prob = self.posterior_nn.log_prob(
-                inputs=theta.reshape(1, -1), context=self.x.reshape(1, -1),
+                inputs=theta.reshape(1, -1).to(self.x.device),
+                context=self.x.reshape(1, -1),
             )
         else:
             target_log_prob = -float("Inf")
@@ -442,7 +442,10 @@ class PotentialFunctionProvider:
         theta = next(iter(theta.values()))
 
         # Notice opposite sign to numpy.
-        log_prob_posterior = -self.posterior_nn.log_prob(inputs=theta, context=self.x)
+        # Move theta to device for evaluation, move back to cpu for comparison to prior.
+        log_prob_posterior = -self.posterior_nn.log_prob(
+            inputs=theta.to(self.x.device), context=self.x
+        ).cpu()
         log_prob_prior = self.prior.log_prob(theta)
 
         within_prior = torch.isfinite(log_prob_prior)

@@ -4,8 +4,7 @@
 
 from abc import ABC, abstractmethod
 from copy import deepcopy
-from typing import Any, Callable, Dict, List, Optional, Union, cast
-from warnings import warn
+from typing import Any, Callable, Dict, Optional, Union, cast
 
 import numpy as np
 import torch
@@ -152,7 +151,7 @@ class PosteriorEstimator(NeuralInference, ABC):
 
         # Calibration kernels proposed in Lueckmann, Gonçalves et al., 2017.
         if calibration_kernel is None:
-            calibration_kernel = lambda x: ones([len(x)])
+            calibration_kernel = lambda x: ones([len(x)], device=self._device)
 
         max_num_epochs = 2 ** 31 - 1 if max_num_epochs is None else max_num_epochs
 
@@ -188,6 +187,7 @@ class PosteriorEstimator(NeuralInference, ABC):
                 sample_with_mcmc=self._sample_with_mcmc,
                 mcmc_method=self._mcmc_method,
                 mcmc_parameters=self._mcmc_parameters,
+                device=self._device,
             )
 
         # Fit posterior using newly aggregated data set.
@@ -288,7 +288,7 @@ class PosteriorEstimator(NeuralInference, ABC):
         )
 
         # Dataset is shared for training and validation loaders.
-        dataset = data.TensorDataset(theta, x, prior_masks)
+        dataset = data.TensorDataset(theta, x, prior_masks,)
 
         # Create neural net and validation loaders using a subset sampler.
         train_loader = data.DataLoader(
@@ -305,6 +305,8 @@ class PosteriorEstimator(NeuralInference, ABC):
             sampler=SubsetRandomSampler(val_indices),
         )
 
+        # Move entire net to device for training.
+        self._posterior.net.to(self._device)
         optimizer = optim.Adam(
             list(self._posterior.net.parameters()), lr=learning_rate,
         )
@@ -316,6 +318,7 @@ class PosteriorEstimator(NeuralInference, ABC):
             self._posterior.net.train()
             for batch in train_loader:
                 optimizer.zero_grad()
+                # Get batches on current device.
                 theta_batch, x_batch, masks_batch = (
                     batch[0].to(self._device),
                     batch[1].to(self._device),

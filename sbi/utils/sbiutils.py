@@ -90,7 +90,7 @@ class Standardize(nn.Module):
         self.register_buffer("_std", std)
 
     def forward(self, tensor):
-        return (tensor - self.mean) / self.std
+        return (tensor - self._mean) / self._std
 
 
 def standardizing_net(batch_t: Tensor, min_std: float = 1e-7) -> nn.Module:
@@ -175,7 +175,6 @@ def sample_posterior_within_prior(
     # posterior. Some of these samples have 0 probability under the prior, i.e. there
     # is leakage (acceptance rate<1) so sample again until reaching `num_samples`.
     while num_remaining > 0:
-
         candidates = posterior_nn.sample(num_remaining, context=x)
         # TODO we need this reshape here because posterior_nn.sample sometimes return
         # leading singleton dimension instead of (num_samples), e.g., (1, 10000, 4)
@@ -183,7 +182,11 @@ def sample_posterior_within_prior(
         candidates = candidates.reshape(num_remaining, -1)
         num_sampled_total += num_remaining
 
-        are_within_prior = torch.isfinite(prior.log_prob(candidates))
+        are_within_prior = torch.isfinite(
+            prior.log_prob(
+                candidates.to(prior.sample().device)
+            )  # candidates could be on GPU while the prior is usually on the CPU.
+        )
         accepted.append(candidates[are_within_prior])
 
         num_accepted = are_within_prior.sum().item()
