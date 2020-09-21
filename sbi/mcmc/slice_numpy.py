@@ -1,6 +1,7 @@
 # This file is part of sbi, a toolkit for simulation-based inference. sbi is licensed
 # under the Affero General Public License v3, see <https://www.gnu.org/licenses/>.
 
+from logging import disable
 import numpy as np
 import os
 import sys
@@ -51,17 +52,21 @@ class SliceSampler(MCMCSampler):
     It cycles sampling from each conditional using univariate slice sampling.
     """
 
-    def __init__(self, x, lp_f, max_width=float("inf"), thin=None):
+    def __init__(
+        self, x, lp_f, max_width=float("inf"), thin=None, show_progressbar=False
+    ):
         """
         :param x: initial state
         :param lp_f: function that returns the log prob
         :param max_width: maximum bracket width
         :param thin: amount of thinning; if None, no thinning
+        :param show_progressbars: Boolean for pbar.
         """
 
         MCMCSampler.__init__(self, x, lp_f, thin)
         self.max_width = max_width
         self.width = None
+        self.show_progressbar = show_progressbar
 
     def gen(self, n_samples, logger=sys.stdout, show_info=False, rng=np.random):
         """
@@ -83,7 +88,7 @@ class SliceSampler(MCMCSampler):
             # logger.write('tuning bracket width...\n')
             self._tune_bracket_width(rng)
 
-        tbar = trange(int(n_samples), miniters=10)
+        tbar = trange(int(n_samples), miniters=10, disable=not self.show_progressbar)
         tbar.set_description("Generating samples")
         for n in tbar:
             # for n in range(int(n_samples)):
@@ -124,7 +129,7 @@ class SliceSampler(MCMCSampler):
         x = self.x.copy()
         self.width = np.full(self.n_dims, 0.01)
 
-        tbar = trange(n_samples, miniters=10)
+        tbar = trange(n_samples, miniters=10, disable=not self.show_progressbar)
         tbar.set_description("Tuning bracket width...")
         for n in tbar:
             # for n in range(int(n_samples)):
